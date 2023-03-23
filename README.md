@@ -1,43 +1,125 @@
-// 创建地图
-var map = new BMap.Map("container");
+// 创建地图实例
+var map = new BMapGL.Map("map");
 
-// 创建线路
-var path = [
-    new BMap.Point(116.399, 39.910),
-    new BMap.Point(116.417, 39.920),
-    new BMap.Point(116.430, 39.900)
-];
-var polyline = new BMap.Polyline(path, {strokeColor:"blue", strokeWeight:6, strokeOpacity:0.5});
+// 创建折线对象
+var polyline = new BMapGL.Polyline([
+    new BMapGL.Point(116.399, 39.910),
+    new BMapGL.Point(116.405, 39.920),
+    new BMapGL.Point(116.425, 39.900)
+], {strokeColor: "blue", strokeWeight: 6, strokeOpacity: 0.5});
 
-// 添加线路和 Marker 到地图
+// 将折线添加到地图中
 map.addOverlay(polyline);
-var marker = new BMap.Marker(path[1]);
-marker.setZIndex(9999);
-marker.enableDragging();
+
+// 创建可拖拽的标记点，并添加到地图中
+var marker = new BMapGL.Marker(new BMapGL.Point(116.405, 39.920), {enableDragging: true});
 map.addOverlay(marker);
 
-// 监听 Marker 拖拽事件
+// 绑定标记点拖拽事件
 marker.addEventListener("dragging", function(e) {
-    // 获取 Marker 的当前位置
     var point = e.point;
-
-    // 计算 Marker 到线路的最近点
-    var nearestPoint = getNearestPointOnPolyline(point, polyline.getPath());
-
-    // 更新 Marker 的位置
-    marker.setPosition(nearestPoint);
+    
+    // 判断点是否在折线内
+    if (BMapGLLib.GeoUtils.isPointInPoly(point, polyline)) {
+        marker.setPosition(point);  // 设置标记点位置
+    } else {
+        // 找出点到折线段的垂足，并将标记点移动到该位置
+        var foot = getFoot(point, polyline);
+        marker.setPosition(foot);
+    }
 });
 
-// 计算点到折线段的垂足
-function getNearestPointOnPolyline(point, polylinePath) {
-    var minDist = Number.MAX_VALUE;
-    var nearestPoint = null;
-    for (var i = 0; i < polylinePath.length - 1; i++) {
-        var dist = BMapLib.GeoUtils.getDistanceToSegment(point, polylinePath[i], polylinePath[i + 1]);
+/**
+ * 获取点到折线段的垂足
+ * @param point 点的坐标
+ * @param polyline 折线对象
+ * @returns 垂足的坐标
+ */
+function getFoot(point, polyline) {
+    var path = polyline.getPath();  // 获取折线路径
+    var minDist = Infinity;  // 初始化最小距离为无限大
+    var foot;  // 垂足坐标
+    
+    // 遍历折线每个线段，求出点到线段的垂足
+    for (var i = 0; i < path.length - 1; i++) {
+        var start = path[i];
+        var end = path[i + 1];
+        var dist = getDistanceToSegment(start, end, point);  // 计算点到线段距离
+        
+        // 如果距离小于当前最小距离，则更新最小距离和垂足坐标
         if (dist < minDist) {
             minDist = dist;
-            nearestPoint = BMapLib.GeoUtils.getPointOfSegmentDistance(point, polylinePath[i], polylinePath[i + 1]);
+            foot = getFootFromPointToSegment(start, end, point);
         }
     }
-    return nearestPoint;
+    
+    return foot;
+}
+
+/**
+ * 获取点到线段的距离
+ * @param start 线段起点
+ * @param end 线段终点
+ * @param point 点的坐标
+ * @returns 点到线段的距离
+ */
+function getDistanceToSegment(start, end, point) {
+    var A = point.lng - start.lng;
+    var B = point.lat - start.lat;
+    var C = end.lng - start.lng;
+    var D = end.lat - start.lat;
+
+    var dot = A * C + B * D;
+    var len_sq = C * C + D * D;
+    var param = dot / len_sq;
+
+    var xx, yy;
+
+    if (param < 0 || (start.lng == end.lng && start.lat == end.lat)) {
+        xx = start.lng;
+        yy = start.lat;
+    } else if (param > 1) {
+        xx = end.lng;
+        yy = end.lat;
+    } else {
+        xx = start.lng + param * C;
+        yy = start.lat + param * D;
+    }
+
+    var dx = point.lng - xx;
+    var dy = point.lat - yy;
+    return Math.sqrt(dx * dx + dy * dy);
+}
+
+/**
+ * 获取点到线段的垂足
+ * @param start 线段起点
+ * @param end 线段终点
+ * @param point 点的坐标
+ * @returns 垂足的坐标
+ */
+function getFootFromPointToSegment(start, end, point) {
+    var A = point.lng - start.lng;
+    var B = point.lat - start.lat;
+    var C = end.lng - start.lng;
+    var D = end.lat - start.lat;
+
+    var dot = A * C + B * D;
+    var len_sq = C * C + D * D;
+    var param = dot / len_sq;
+
+    var xx, yy;
+
+    if (param < 0 || (start.lng == end.lng && start.lat == end.lat)) {
+        xx = start.lng;
+        yy = start.lat;
+    } else if (param > 1) {
+        xx = end.lng;
+        yy = end.lat;
+    } else {
+        xx = start.lng + param * C;
+        yy = start.lat + param * D;
+    }
+
+    return new BMapGL.Point(xx, yy);
 }
